@@ -1,4 +1,6 @@
-# models/action.py
+from dataclasses import dataclass
+
+
 @dataclass
 class Action:
     id: str
