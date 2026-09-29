@@ -1,9 +1,13 @@
 from dataclasses import dataclass
+from typing import Callable
 
 
 @dataclass
 class RandomEvent:
     id: str
     title: str
-    effects: dict      # {"grain": -3, "land": -1}
-    is_positive: bool  # если True — эффекты инвертируются при негативном исходе
+    apply_func: Callable
+
+    def apply(self, player, positive: bool) -> str:
+        """Метод, который будет вызывать движок игры."""
+        return self.apply_func(player, positive)
