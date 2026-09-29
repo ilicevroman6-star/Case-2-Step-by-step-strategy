@@ -6,7 +6,8 @@ class Player:
         self.stamina = 20
         self.reputation = 16
         self.arena = 0
-        self.rent = 0
+        self.owned_arenas = []
+        self.rent = 1
 
     @property
     def prestige(self):
