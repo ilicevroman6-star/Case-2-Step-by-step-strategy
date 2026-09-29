@@ -57,7 +57,7 @@ def take_turn(players, current_index):
     """
     player = players[current_index]
 
-    if player.is_dead:
+    if player.is_bankruptcy:
         return  # Если игрок выбыл, функция просто завершает работу
 
     # ЭТАП 1: БРОСОК КУБИКА И ПЕРЕМЕЩЕНИЕ С ПРОВЕРКОЙ КРУГА.
