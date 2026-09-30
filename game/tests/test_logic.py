@@ -228,5 +228,3 @@ def test_random_events_positive_and_negative_10000_iterations():
     assert positive_count + negative_count == 10000
     assert 0.942 < positive_count / negative_count < 1.062
 
-    return positive_count, negative_count
-
