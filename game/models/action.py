@@ -1,7 +1,3 @@
-from dataclasses import dataclass
-
-
-@dataclass
 class Action:
     id: str
     title: str
