@@ -8,6 +8,7 @@ class Player:
         self.arena = 0
         self.owned_arenas = []
         self.rent = 1
+        self.arena_price_modifier = 0
 
     @property
     def prestige(self):
