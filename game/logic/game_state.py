@@ -4,7 +4,7 @@ from game.logic.events_pool import GLOBAL_EVENTS, RANDOM_TILE_EVENTS, MEDIA_TILE
 from game.models.action import Action
 
 
-def take_turn(players, current_index):
+def take_turn(players, current_index: int):
     """Генератор хода. Отвечает только за перемещение и логику шагов."""
 
     player = players[current_index]
@@ -69,30 +69,54 @@ def take_turn(players, current_index):
             "1. Честная (-5 монет, пропуск хода) 2. Темная (-7 репутации)",
         )
         if choice.get("doping_type") == "fair":
+            # Пытаемся списать деньги за честную проверку.
             if Action(cost={"money": 5}).execute(player):
                 setattr(player, "skip_next_turn", True)
+            else:
+                # Если денег нет, принудительно отправляем на темную проверку
+                player.reputation -= 7
         else:
             player.reputation -= 7
 
     elif current_tile == "Громкий трансфер":
         # Изъятие ресурсов теперь возвращает готовое действие Action!
-        victim_idx, act = yield (
+        victim_idx, chosen_res = yield (
             "await_transfer",
             player,
             "Выбери жертву и действие",
         )
-        # act — это готовый Action(cost={ресурс: X}), присланный из интерфейса
-        if act.execute(players[victim_idx]):
-            # Даем игроку зеркальный эффект (забрали деньги -> получил деньги)
-            Action(effects=act.cost).execute(player)
+        victim = players[victim_idx]
+
+        # СЦЕНАРИЙ 1: Кража репутации (В обход класса Action, напрямую)
+        if chosen_res == "reputation":
+            # Вычисляем, сколько реально можно забрать (максимум 4, но не больше, чем есть у жертвы)
+            amount = min(4, max(0, victim.reputation))
+            victim.reputation -= amount
+            player.reputation += amount
+
+        # СЦЕНАРИЙ 2: Кража обычных ресурсов (Используем безопасный Action)
+        elif chosen_res in ["money", "stamina"]:
+            steal_amount = 10 if chosen_res == "money" else 6
+            stolen_action = Action(cost={chosen_res: steal_amount})
+
+            if stolen_action.execute(victim):
+                Action(effects={chosen_res: steal_amount}).execute(player)
 
     elif current_tile == "Арена":
         price = max(
             0,
             DEFAULT_BUY_PRICE + getattr(player, "arena_price_modifier", 0),
         )
-        buy = yield ("await_buy", player, f"Купить Арену за {price} монет?")
+        buy = yield "await_buy", player, f"Купить Арену за {price} монет?"
         if buy and buy.get("buy"):
-            Action(cost={"money": price}, effects={"add_arena": player.arena}).execute(
-                player
+            buy_action = Action(
+                cost={"money": price},
+                effects={"add_arena": player.arena},
             )
+            if not buy_action.execute(player):
+                # Здесь можно сделать yield с логом ошибки для интерфейса
+                yield (
+                    "log",
+                    f"❌ {player.name} не смог купить Арену: "
+                    "не хватает монет!",
+                )
