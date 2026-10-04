@@ -8,14 +8,22 @@ class Player:
         self.arena = 0
         self.owned_arenas = []
         self.rent = 1
+        self.arena_price_modifier = 0
 
     @property
-    def prestige(self):
-        return self.arena * 3 + self.money // 8 + self.reputation // 4
+    def prestige(self) -> int:
+        """Считает очки престижа игрока для финального рейтинга."""
+        return (
+            len(self.owned_arenas) * 3
+            + self.money // 8
+            + self.reputation // 4
+        )
 
     @property
-    def is_bankruptcy(self):
+    def is_bankruptcy(self) -> bool:
+        """Проверяет, обанкротился ли игрок."""
         return self.money < 0 or self.reputation < 0
 
-    def can_afford(self, action):
-        return all(getattr(self, res) >= cost for res, cost in action.cost.items())
+    def can_afford(self, action) -> bool:
+        """Прослойка для совместимости с внешним кодом (вызывает проверку Action)."""
+        return action.can_execute(self)
