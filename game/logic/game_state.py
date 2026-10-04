@@ -13,6 +13,8 @@ def take_turn(players, current_index: int):
 
     # 1. ПЕРЕМЕЩЕНИЕ И КРУГ.
     dice = random.randint(1, 6)
+    player.last_dice = dice  # сохраняем бросок в игрока
+    print(f"[ХОД] {player.name} выбросил кубик: {dice}")
     # Считаем чистую новую позицию БЕЗ деления по кругу.
     new_position = player.arena + dice
 
@@ -20,12 +22,15 @@ def take_turn(players, current_index: int):
     passed_start = new_position >= len(BOARD)
 
     # И только теперь сохраняем игроку его позицию с учетом круга.
+    old_pos = player.arena
     player.arena = new_position % len(BOARD)
+    print(f"[ХОД] {player.name}: позиция {old_pos} → {player.arena}")
 
     if passed_start:
-        Action(effects={"money": 20, "stamina": 5, "reputation": 3}).execute(
-            player
-        )
+        # Начисляем бонусы за круг напрямую (репутация — не через Action)
+        player.money += 20
+        player.stamina += 5
+        player.reputation += 3
         global_event = random.choice(GLOBAL_EVENTS)
         yield (
             "global_event",
@@ -49,13 +54,13 @@ def take_turn(players, current_index: int):
     # 3. ЛОКАЛЬНЫЕ СОБЫТИЯ И ИНТЕРАКТИВНЫЕ КЛЕТКИ
     if current_tile == "Random":
         is_positive = random.random() < 0.5
-        yield "log", random.choice(RANDOM_TILE_EVENTS).realize(
+        yield "log", None, random.choice(RANDOM_TILE_EVENTS).realize(
             player, positive=is_positive
         )
 
     elif current_tile == "Медиа":
         is_positive = random.random() < 0.5
-        yield "log", random.choice(MEDIA_TILE_EVENTS).realize(
+        yield "log", None, random.choice(MEDIA_TILE_EVENTS).realize(
             player, positive=is_positive
         )
 
@@ -89,7 +94,8 @@ def take_turn(players, current_index: int):
 
         # СЦЕНАРИЙ 1: Кража репутации (В обход класса Action, напрямую)
         if chosen_res == "reputation":
-            # Вычисляем, сколько реально можно забрать (максимум 4, но не больше, чем есть у жертвы)
+            # Вычисляем, сколько реально можно забрать
+            # (максимум 4, но не больше, чем есть у жертвы)
             amount = min(4, max(0, victim.reputation))
             victim.reputation -= amount
             player.reputation += amount
@@ -102,21 +108,73 @@ def take_turn(players, current_index: int):
             if stolen_action.execute(victim):
                 Action(effects={chosen_res: steal_amount}).execute(player)
 
+
     elif current_tile == "Арена":
-        price = max(
-            0,
-            DEFAULT_BUY_PRICE + getattr(player, "arena_price_modifier", 0),
-        )
-        buy = yield "await_buy", player, f"Купить Арену за {price} монет?"
-        if buy and buy.get("buy"):
-            buy_action = Action(
-                cost={"money": price},
-                effects={"add_arena": player.arena},
+
+        # Проверяем, чья это арена
+
+        owner = None
+
+        for p in players:
+
+            if player.arena in getattr(p, "owned_arenas", []):
+                owner = p
+
+                break
+
+        if owner is not None and owner != player:
+
+            # Чужая арена — автоплата ренты (уже обработано выше)
+
+            pass
+
+        elif owner == player:
+
+            # Своя арена — ничего не делаем
+
+            yield (
+
+                "log",
+
+                None,
+
+                f" {player.name}: своя арена, ничего не происходит.",
+
             )
-            if not buy_action.execute(player):
-                # Здесь можно сделать yield с логом ошибки для интерфейса
-                yield (
-                    "log",
-                    f"❌ {player.name} не смог купить Арену: "
-                    "не хватает монет!",
+
+        else:
+
+            # Свободная арена — предлагаем купить
+
+            price = max(
+
+                0,
+
+                DEFAULT_BUY_PRICE + getattr(player, "arena_price_modifier", 0),
+
+            )
+
+            buy = yield "await_buy", player, f"Купить Арену за {price} монет?"
+
+            if buy and buy.get("buy"):
+
+                buy_action = Action(
+
+                    cost={"money": price},
+
+                    effects={"add_arena": player.arena},
+
                 )
+
+                if not buy_action.execute(player):
+                    yield (
+
+                        "log",
+
+                        None,
+
+                        f" {player.name} не смог купить Арену: "
+
+                        "не хватает монет!",
+
+                    )

@@ -16,11 +16,13 @@ class App:
         self.running = True
         # 4 игрока
         self.players = [
-            Player("Игорь (СКА)",   "Синий"),
-            Player("Артем (ЦСКА)",  "Золотой"),
-            Player("Марина (Динамо)", "Красный"),
-            Player("Олег (Спартак)",  "Лайм"),
+            Player("Сибирь",   "Синий"),
+            Player("Авангард",  "Оранжевый"),
+            Player("СКА", "Красный"),
+            Player("ЦСКА",  "Лайм"),
         ]
+        for p in self.players:
+            print(f"[СТАРТ] {p.name}: arena = {p.arena}")
         # позиции фишек — 0 (Старт)
         for p in self.players:
             if not hasattr(p, "position"):

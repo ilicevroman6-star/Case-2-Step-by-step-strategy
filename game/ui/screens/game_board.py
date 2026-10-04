@@ -44,12 +44,16 @@ class GameBoardScreen(BaseScreen):
 
         # Кнопка хода
         self.roll_btn = Button(1280 // 2 - 130, 640, 260, 44,
-                               "🎲  БРОСИТЬ КОСТИ", self.f_btn)
+                               "  БРОСИТЬ КОСТИ", self.f_btn)
 
+        # Лог
         self.log_lines: list[str] = []
         self.max_log = 3
+        # Последний бросок
+        self.last_dice = None
+        self.last_player = None
         # Лог (короткая строка внизу)
-        self.log_rect = pygame.Rect(self.board.rect.x, 600, self.board.rect.w, 32)
+        self.log_rect = pygame.Rect(20, 690, 1240, 30)
 
     # ---------------------------------------------------- EVENTS
     def handle_event(self, event):
@@ -112,8 +116,12 @@ class GameBoardScreen(BaseScreen):
                              f"{active.name} пропускает раунд.",
                              [("Пропустить паузу", None, "success")])
             return
+        # Сохраняем активного игрока ПЕРЕД ходом
+        self.last_player = active
         self.turn_generator = take_turn(self.players, self.current_idx)
         self._advance_generator()
+        # После первого шага — берём бросок
+        self.last_dice = getattr(active, "last_dice", None)
 
     def _advance_generator(self):
         """Прогоняет генератор до следующего модального шага.
@@ -191,8 +199,6 @@ class GameBoardScreen(BaseScreen):
         logo = self.f_logo.render("МОНОПОЛИЯ НА ЛЬДУ", True, COLORS["text_h"])
         screen.blit(logo, (24, 18))
 
-        sub = self.f_body.render("S04 · ПОЛЕ", True, COLORS["text_secondary"])
-        screen.blit(sub, sub.get_rect(centerx=1280 // 2, centery=28))
 
         turn = self.players[self.current_idx]
         right = self.f_body.render(f"Ход: {turn.name}", True, COLORS["hover"])
@@ -214,15 +220,31 @@ class GameBoardScreen(BaseScreen):
         for i, card in enumerate(self.cards):
             card.draw(screen, active=(i == self.current_idx))
 
-        # Доска
-        owned = getattr(self, "owned_map", None)
+
+        # Доска — собираем карту владельцев арен
+        owned = {}
+        for p_idx, p in enumerate(self.players):
+            for arena_idx in getattr(p, "owned_arenas", []):
+                owned[arena_idx] = p_idx
         self.board.draw(screen, self.players, owned)
+
+        # Показываем последний бросок (сохранён в self.last_dice)
+        if self.last_dice is not None and self.last_player is not None:
+            dice_surf = self.f_h2.render(
+                f"{self.last_player.name}: {self.last_dice}",
+                True,
+                COLORS["hover"]
+            )
+            dice_rect = dice_surf.get_rect(
+                center=(self.board.rect.left - 170, self.board.rect.centery)
+            )
+            screen.blit(dice_surf, dice_rect)
 
         # Кнопка броска — только когда нет активного хода
         if self.turn_generator is None and not self.goal_reached:
             self.roll_btn.draw(screen)
 
-        self._draw_log(screen)
+        #self._draw_log(screen)
 
         # Модалка поверх всего
         if self.current_modal:

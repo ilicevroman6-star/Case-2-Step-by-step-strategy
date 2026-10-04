@@ -63,7 +63,7 @@ class BoardView:
         # группируем по клетке, чтобы фишки не накладывались
         buckets: dict[int, list[int]] = {}
         for i, p in enumerate(players):
-            pos = getattr(p, "position", 0)
+            pos = getattr(p, "arena", 0)
             buckets.setdefault(pos, []).append(i)
 
         for tile_idx, player_ids in buckets.items():

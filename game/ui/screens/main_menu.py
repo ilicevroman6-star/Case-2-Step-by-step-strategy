@@ -12,7 +12,7 @@ class MainMenuScreen(BaseScreen):
         self.f_sub = theme.get_font("inter", 16, bold=False)
         self.f_btn = theme.get_font("inter", 14, bold=True)
         cx = 1280 // 2
-        self.new_btn = Button(cx - 130, 400, 260, 52, "▶  НОВАЯ ИГРА", self.f_btn)
+        self.new_btn = Button(cx - 130, 400, 260, 52, "НОВАЯ ИГРА", self.f_btn)
         self.rules_btn = Button(cx - 130, 470, 260, 52, "ПРАВИЛА", self.f_btn)
         self.buttons = [self.new_btn, self.rules_btn]
 
@@ -21,6 +21,9 @@ class MainMenuScreen(BaseScreen):
             if self.new_btn.is_clicked(event.pos, True):
                 from game.ui.screens.game_board import GameBoardScreen
                 self.app.goto(GameBoardScreen)
+            elif self.rules_btn.is_clicked(event.pos, True):
+                from game.ui.screens.rules import RulesScreen
+                self.app.goto(RulesScreen)
 
     def update(self, dt, mouse_pos):
         for b in self.buttons:
