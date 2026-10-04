@@ -24,6 +24,14 @@ class Player:
         """Проверяет, обанкротился ли игрок."""
         return self.money < 0 or self.reputation < 0
 
+    def check_stamina_depletion(self) -> bool:
+        """UX-правило №4: Экстренные сборы при выносливости <= 0."""
+        if self.stamina <= 0:
+            self.stamina = 10
+            setattr(self, "skip_next_turn", True)
+            return True
+        return False
+
     def can_afford(self, action) -> bool:
         """Прослойка для совместимости с внешним кодом (вызывает проверку Action)."""
         return action.can_execute(self)
