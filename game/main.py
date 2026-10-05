@@ -1,4 +1,3 @@
-# main.py
 import sys
 import pygame
 from game.models.player import Player
