@@ -17,6 +17,7 @@ class GameBoardScreen(BaseScreen):
         self.turn_generator = None
         self.current_modal = None
         self.goal_reached = False
+        self.winner_idx: int | None = None
 
         self.f_h1 = theme.get_font("oswald", 32, bold=True)
         self.f_h2 = theme.get_font("oswald", 24, bold=True)
@@ -48,7 +49,7 @@ class GameBoardScreen(BaseScreen):
 
         # Лог
         self.log_lines: list[str] = []
-        self.max_log = 3
+        self.max_log = 5
         # Последний бросок
         self.last_dice = None
         self.last_player = None
@@ -163,22 +164,25 @@ class GameBoardScreen(BaseScreen):
             self.current_modal.add_button(label, action, state=state)
 
     def _finish_turn(self):
-        # 1) Всегда сначала обнуляем всё, что связано с активным ходом
+        # 1) Обнуляем состояние активного хода
         self.turn_generator = None
         self.current_modal = None
 
-        # 2) Проверка цели
-        if self.players[self.current_idx].prestige >= 30:
+        # 2) Фиксируем победителя — ТОЛЬКО первого, кто добрался до 30
+        if self.players[self.current_idx].prestige >= 30 and not self.goal_reached:
             self.goal_reached = True
+            self.winner_idx = self.current_idx
+            print(f"[ПОБЕДА] {self.players[self.current_idx].name} набрал "
+                  f"{self.players[self.current_idx].prestige} престижа")
 
-        # 3) Переход на победный экран только после доигранного круга
-        if self.goal_reached and self.current_idx == len(self.players) - 1:
+        # 3) Всегда передаём ход следующему — доигрываем круг
+        self.current_idx = (self.current_idx + 1) % len(self.players)
+
+        # 4) Победа наступает, когда очередь вернулась к winner_idx.
+        #    Это значит: круг доигран всеми, кто ещё в игре.
+        if self.goal_reached and self.current_idx == self.winner_idx:
             from game.ui.screens.victory import VictoryScreen
             self.app.goto(VictoryScreen)
-            return
-
-        # 4) Передаём ход следующему
-        self.current_idx = (self.current_idx + 1) % len(self.players)
 
     def _push_log(self, msg):
         self.log_lines.append(msg)
@@ -206,11 +210,14 @@ class GameBoardScreen(BaseScreen):
 
     def _draw_log(self, screen):
         r = self.log_rect
+        n = len(self.log_lines)
         for i, line in enumerate(self.log_lines):
-            color = COLORS["text_main"] if i == len(self.log_lines) - 1 \
+            # i=0 — самая старая строка; i=n-1 — самая свежая
+            # рисуем сверху вниз внутри log_rect
+            color = COLORS["text_main"] if i == n - 1 \
                 else COLORS["text_secondary"]
             t = self.f_body.render("• " + line[:110], True, color)
-            screen.blit(t, (r.x, r.y - i * 16))
+            screen.blit(t, (r.x, r.y + i * 16))
 
     def draw(self, screen):
         screen.fill(COLORS["bg_main"])
@@ -241,10 +248,10 @@ class GameBoardScreen(BaseScreen):
             screen.blit(dice_surf, dice_rect)
 
         # Кнопка броска — только когда нет активного хода
-        if self.turn_generator is None and not self.goal_reached:
+        if self.turn_generator is None:
             self.roll_btn.draw(screen)
 
-        #self._draw_log(screen)
+        self._draw_log(screen)
 
         # Модалка поверх всего
         if self.current_modal:

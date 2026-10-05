@@ -1,6 +1,10 @@
 import random
 from game.config import BOARD, ARENA_PRICES, DEFAULT_BUY_PRICE
-from game.logic.events_pool import GLOBAL_EVENTS, RANDOM_TILE_EVENTS, MEDIA_TILE_EVENTS
+from game.logic.events_pool import (
+    GLOBAL_EVENTS,
+    RANDOM_TILE_EVENTS, RANDOM_POSITIVE, RANDOM_NEGATIVE,
+    MEDIA_TILE_EVENTS, MEDIA_POSITIVE, MEDIA_NEGATIVE,
+)
 from game.models.action import Action
 
 
@@ -10,6 +14,14 @@ def take_turn(players, current_index: int):
     player = players[current_index]
     if player.is_bankruptcy:
         return
+
+    if current_index == 0:
+        global_event = random.choice(GLOBAL_EVENTS)
+        yield (
+            "global_event",
+            global_event,
+            global_event.realize(player, positive=random.random() < 0.5),
+        )
 
     # 1. ПЕРЕМЕЩЕНИЕ И КРУГ.
     dice = random.randint(1, 6)
@@ -31,12 +43,6 @@ def take_turn(players, current_index: int):
         player.money += 20
         player.stamina += 5
         player.reputation += 3
-        global_event = random.choice(GLOBAL_EVENTS)
-        yield (
-            "global_event",
-            global_event,
-            global_event.realize(player, positive=random.random() < 0.5),
-        )
 
     current_tile = BOARD[player.arena]
 
@@ -54,16 +60,14 @@ def take_turn(players, current_index: int):
 
     # 3. ЛОКАЛЬНЫЕ СОБЫТИЯ И ИНТЕРАКТИВНЫЕ КЛЕТКИ
     if current_tile == "Random":
-        is_positive = random.random() < 0.5
-        yield "log", None, random.choice(RANDOM_TILE_EVENTS).realize(
-            player, positive=is_positive
-        )
+        pool = RANDOM_POSITIVE if random.random() < 0.5 else RANDOM_NEGATIVE
+        is_positive = pool is RANDOM_POSITIVE
+        yield "log", None, random.choice(pool).realize(player, positive=is_positive)
 
     elif current_tile == "Медиа":
-        is_positive = random.random() < 0.5
-        yield "log", None, random.choice(MEDIA_TILE_EVENTS).realize(
-            player, positive=is_positive
-        )
+        pool = MEDIA_POSITIVE if random.random() < 0.5 else MEDIA_NEGATIVE
+        is_positive = pool is MEDIA_POSITIVE
+        yield "log", None, random.choice(pool).realize(player, positive=is_positive)
 
     elif current_tile == "Тренировка":
         Action(effects={"stamina": 4}).execute(player)
