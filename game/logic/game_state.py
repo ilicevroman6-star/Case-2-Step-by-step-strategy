@@ -45,8 +45,9 @@ def take_turn(players, current_index: int):
         for owner in players:
             if owner != player and player.arena in owner.owned_arenas:
                 final_rent = (
-                    ARENA_PRICES[player.arena]["rent_price"] * player.rent
+                        ARENA_PRICES[player.arena]["rent_price"] * player.rent
                 )
+                print(f"[РЕНТА] {player.name} платит {final_rent} монет игроку {owner.name}")
                 Action(cost={"money": final_rent}).execute(player)
                 Action(effects={"money": final_rent}).execute(owner)
                 break
@@ -109,6 +110,7 @@ def take_turn(players, current_index: int):
                 Action(effects={chosen_res: steal_amount}).execute(player)
 
 
+
     elif current_tile == "Арена":
 
         # Проверяем, чья это арена
@@ -124,35 +126,25 @@ def take_turn(players, current_index: int):
 
         if owner is not None and owner != player:
 
-            # Чужая арена — автоплата ренты (уже обработано выше)
+            # Чужая арена — рента уже списана выше
 
             pass
 
         elif owner == player:
 
-            # Своя арена — ничего не делаем
+            # Своя арена — ничего
 
-            yield (
+            yield ("log", None,
 
-                "log",
-
-                None,
-
-                f" {player.name}: своя арена, ничего не происходит.",
-
-            )
+                   f"{player.name}: своя арена, ничего не происходит.")
 
         else:
 
             # Свободная арена — предлагаем купить
 
-            price = max(
+            price = max(0, DEFAULT_BUY_PRICE +
 
-                0,
-
-                DEFAULT_BUY_PRICE + getattr(player, "arena_price_modifier", 0),
-
-            )
+                        getattr(player, "arena_price_modifier", 0))
 
             buy = yield "await_buy", player, f"Купить Арену за {price} монет?"
 
@@ -167,14 +159,8 @@ def take_turn(players, current_index: int):
                 )
 
                 if not buy_action.execute(player):
-                    yield (
+                    yield ("log", None,
 
-                        "log",
+                           f"{player.name} не смог купить Арену: "
 
-                        None,
-
-                        f" {player.name} не смог купить Арену: "
-
-                        "не хватает монет!",
-
-                    )
+                           "не хватает монет!")
