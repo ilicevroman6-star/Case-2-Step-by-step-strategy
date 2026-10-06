@@ -31,7 +31,9 @@ def take_turn(players, current_index: int, round_state: dict):
     player.arena = new_position % len(BOARD)
     print(f"[ХОД] {player.name}: позиция {old_pos} → {player.arena}")
 
-    if passed_start and not round_state.get("global_fired", False):
+    if (passed_start
+            and current_index == 0
+            and not round_state.get("global_fired", False)):
         round_state["global_fired"] = True
         global_event = random.choice(GLOBAL_EVENTS)
         yield (
