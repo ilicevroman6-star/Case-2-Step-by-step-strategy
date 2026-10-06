@@ -55,15 +55,11 @@ class GameBoardScreen(BaseScreen):
         self.last_player = None
         # Лог (короткая строка внизу)
         self.log_rect = pygame.Rect(20, 690, 1240, 30)
+        self.round_state = {"global_fired": False}
 
     # ---------------------------------------------------- EVENTS
     def handle_event(self, event):
         if event.type != pygame.MOUSEBUTTONUP or event.button != 1:
-            return
-
-        # Защита: если модалка есть, но генератор уже мёртв — просто закрываем окно
-        if self.current_modal and not self.turn_generator:
-            self.current_modal = None
             return
 
         if self.current_modal:
@@ -72,70 +68,89 @@ class GameBoardScreen(BaseScreen):
             self._roll_click()
 
     def _modal_click(self, pos):
-        # Двойная страховка
-        if not self.turn_generator:
-            self.current_modal = None
-            return
-
+        print(f"[MC] buttons={[(b.text, a) for b, a in self.current_modal.buttons]}")
         for btn, action in self.current_modal.buttons:
             if not btn.is_clicked(pos, True):
                 continue
 
-            # Сразу закрываем окно — что бы дальше ни случилось
+            # ── Специальные действия без генератора ─────────────────
+
+
+            if action == "skip_turn":
+                # Закрыли S13/S16 — пропускаем ход, передаём дальше
+                self.current_modal = None
+                self._finish_turn()
+                return
+
+            # ── Обычные действия через turn_generator ───────────────
+            if not self.turn_generator:
+                # Модалка-сирота без генератора — просто закрыть
+                self.current_modal = None
+                return
+
             self.current_modal = None
 
-            try:
-                if action is not None:
-                    step_type, _, msg = self.turn_generator.send(action)
-                else:
-                    step_type, _, msg = next(self.turn_generator)
-
-                self._push_log(msg)
-                # Продолжаем крутить генератор до следующего yield/StopIteration
+            if action is None:
                 self._advance_generator()
-            except StopIteration:
-                # Ход завершён — модалки уже нет, генератора тоже
-                self._finish_turn()
-
-            break
+            else:
+                try:
+                    step_type, obj, msg = self.turn_generator.send(action)
+                except StopIteration:
+                    self._finish_turn()
+                else:
+                    self._process_step(step_type, obj, msg)
+            return
 
     def _roll_click(self):
+        # Если ход уже идёт — игнорируем клик
         if self.turn_generator is not None:
             return
+
         active = self.players[self.current_idx]
+
+        # Банкрот — молча передаём ход
         if getattr(active, "is_bankruptcy", False):
             self.current_idx = (self.current_idx + 1) % len(self.players)
             return
+
+        # Кончилась стамина — S16, пропуск хода
         if hasattr(active, "check_stamina_depletion") and active.check_stamina_depletion():
             self._show_modal("S16 · Экстренные сборы",
                              f"{active.name} теряет стамину. Ход пропущен.",
-                             [("Понятно · на сборы", None, "danger")])
+                             [("Понятно · на сборы", "skip_turn", "danger")])
             return
+
+        # Time Out — S13, пропуск хода
         if getattr(active, "skip_next_turn", False):
             active.skip_next_turn = False
             self._show_modal("S13 · Time Out",
                              f"{active.name} пропускает раунд.",
-                             [("Пропустить паузу", None, "success")])
+                             [("Пропустить паузу", "skip_turn", "success")])
             return
-        # Сохраняем активного игрока ПЕРЕД ходом
+
+        # Всё чисто — старт хода.
+        # S10 при необходимости выпадет внутри take_turn, при пересечении старта.
+        self._start_turn(active)
+
+    def _start_turn(self, active):
         self.last_player = active
-        self.turn_generator = take_turn(self.players, self.current_idx)
+        self.turn_generator = take_turn(self.players, self.current_idx, self.round_state)
         self._advance_generator()
-        # После первого шага — берём бросок
         self.last_dice = getattr(active, "last_dice", None)
 
     def _advance_generator(self):
-        """Прогоняет генератор до следующего модального шага.
-        Если генератор пуст или мёртв — завершает ход."""
+        """Ровно один next() и обработка полученного шага."""
         if not self.turn_generator:
             return
-
         try:
             step_type, obj, msg = next(self.turn_generator)
         except StopIteration:
             self._finish_turn()
             return
+        self._process_step(step_type, obj, msg)
 
+    def _process_step(self, step_type, obj, msg):
+        """Единственное место, где решается, какую модалку показывать."""
         self._push_log(msg)
 
         if step_type == "await_buy":
@@ -146,15 +161,14 @@ class GameBoardScreen(BaseScreen):
             self._show_modal("S12 · Допинг-контроль", msg,
                              [("Честная", {"doping_type": "fair"}, "active"),
                               ("Тёмная", {"doping_type": "dark"}, "danger")])
-
         elif step_type == "await_transfer":
             opp = 1 - self.current_idx
             self._show_modal("S14 · Громкий трансфер", msg,
                              [("Монеты (10)", (opp, "money"), "active"),
                               ("Стамина (6)", (opp, "stamina"), "active")])
-        elif step_type == "global_event":
+        elif step_type == "global_event":  # ← вернуть блок
             self._show_modal("S10 · Глобальное событие", msg,
-                             [("Принять закон круга", None, "danger")])
+                             [("Принять закон круга", None, "active")])  # action=None
         else:
             self._show_modal("Событие", msg, [("ОК", None, "active")])
 
@@ -164,22 +178,22 @@ class GameBoardScreen(BaseScreen):
             self.current_modal.add_button(label, action, state=state)
 
     def _finish_turn(self):
-        # 1) Обнуляем состояние активного хода
+        old = self.current_idx
         self.turn_generator = None
         self.current_modal = None
 
-        # 2) Фиксируем победителя — ТОЛЬКО первого, кто добрался до 30
         if self.players[self.current_idx].prestige >= 30 and not self.goal_reached:
             self.goal_reached = True
             self.winner_idx = self.current_idx
-            print(f"[ПОБЕДА] {self.players[self.current_idx].name} набрал "
-                  f"{self.players[self.current_idx].prestige} престижа")
+            self.app.winner_idx = self.current_idx
 
-        # 3) Всегда передаём ход следующему — доигрываем круг
+        # Переход к следующему
         self.current_idx = (self.current_idx + 1) % len(self.players)
 
-        # 4) Победа наступает, когда очередь вернулась к winner_idx.
-        #    Это значит: круг доигран всеми, кто ещё в игре.
+        # Если ход вернулся к 0 — круг завершён, разрешаем новое событие
+        if self.current_idx == 0:
+            self.round_state["global_fired"] = False
+
         if self.goal_reached and self.current_idx == self.winner_idx:
             from game.ui.screens.victory import VictoryScreen
             self.app.goto(VictoryScreen)

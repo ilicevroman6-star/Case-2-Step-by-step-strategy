@@ -8,20 +8,13 @@ from game.logic.events_pool import (
 from game.models.action import Action
 
 
-def take_turn(players, current_index: int):
+def take_turn(players, current_index: int, round_state: dict):
     """Генератор хода. Отвечает только за перемещение и логику шагов."""
 
     player = players[current_index]
     if player.is_bankruptcy:
         return
 
-    if current_index == 0:
-        global_event = random.choice(GLOBAL_EVENTS)
-        yield (
-            "global_event",
-            global_event,
-            global_event.realize(player, positive=random.random() < 0.5),
-        )
 
     # 1. ПЕРЕМЕЩЕНИЕ И КРУГ.
     dice = random.randint(1, 6)
@@ -37,6 +30,15 @@ def take_turn(players, current_index: int):
     old_pos = player.arena
     player.arena = new_position % len(BOARD)
     print(f"[ХОД] {player.name}: позиция {old_pos} → {player.arena}")
+
+    if passed_start and not round_state.get("global_fired", False):
+        round_state["global_fired"] = True
+        global_event = random.choice(GLOBAL_EVENTS)
+        yield (
+            "global_event",
+            global_event,
+            global_event.realize(player, positive=random.random() < 0.5),
+        )
 
     if passed_start:
         # Начисляем бонусы за круг напрямую (репутация — не через Action)
