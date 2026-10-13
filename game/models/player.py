@@ -2,7 +2,7 @@ class Player:
     def __init__(self, name, color):
         self.name = name
         self.color = color
-        self.money = 50
+        self.money = 30
         self.stamina = 20
         self.reputation = 16
         self.arena = 0
