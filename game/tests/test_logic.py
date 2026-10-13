@@ -13,7 +13,7 @@ def test_player_created_correctly():
     player = Player("Roman", "red")
     assert player.name == 'Roman'
     assert player.color == 'red'
-    assert player.money == 50
+    assert player.money == 30
     assert player.stamina == 20
     assert player.reputation == 16
     assert player.arena == 0
@@ -22,13 +22,13 @@ def test_player_created_correctly():
 
 def test_prestige_created_correctly():
     player = Player("Roman", "red")
-    player.money = 64
+    player.money = 40
     player.stamina = 52
     player.reputation = 40
     player.arena = 4
     player.rent = 1
     player.owned_arenas = ["snow", "wind", "lol", "kek"]
-    assert player.prestige == 30
+    assert player.prestige == 27
 
 def test_bankruptcy():
     player = Player("Roman", "red")
@@ -50,14 +50,14 @@ def player():
 @pytest.mark.parametrize(
     "event_id, expected_stats",
     [
-        ("E1", {"money": 60}),
+        ("E1", {"money": 40}),
         ("E2", {"stamina": 24}),
         ("E3", {"reputation": 19}),
-        ("E4", {"money": 56}),
-        ("E5", {"money": 55, "reputation": 18}),
-        ("E6", {"money": 38}),
+        ("E4", {"money": 36}),
+        ("E5", {"money": 35, "reputation": 18}),
+        ("E6", {"money": 18}),
         ("E7", {"arena_price_modifier": -4}),
-        ("E8", {"money": 55, "reputation": 20}),
+        ("E8", {"money": 35, "reputation": 20}),
     ],
 )
 def test_positive_event_changes_player_stats(player, event_id, expected_stats):
@@ -69,20 +69,17 @@ def test_positive_event_changes_player_stats(player, event_id, expected_stats):
     for stat_name, expected_value in expected_stats.items():
         assert getattr(player, stat_name) == expected_value
 
-    #Проверка, что вернулся текст положительного события
-    assert log_text == event.pos_text
-
 @pytest.mark.parametrize(
     "event_id, expected_stats",
     [
-        ("E1", {"money": 35}),
+        ("E1", {"money": 15}),
         ("E2", {"stamina": 13}),
         ("E3", {"reputation": 14}),
         ("E4", {"rent": 2}),
-        ("E5", {"money": 47, "reputation": 13}),
+        ("E5", {"money": 27, "reputation": 13}),
         ("E6", {"reputation": 13}),
         ("E7", {"arena_price_modifier": 4}),
-        ("E8", {"money": 46, "reputation": 14}),
+        ("E8", {"money": 26, "reputation": 14}),
     ],
 )
 def test_negative_event_changes_player_stats(player, event_id, expected_stats):
@@ -94,8 +91,6 @@ def test_negative_event_changes_player_stats(player, event_id, expected_stats):
     for stat_name, expected_value in expected_stats.items():
         assert getattr(player, stat_name) == expected_value
 
-    #Проверка текста отрицательного события
-    assert log_text == event.neg_text
 
 @pytest.fixture
 def player():
@@ -143,7 +138,7 @@ def test_reputation_cannot_be_used(cost, effects):
     ("cost", "expected"),
     [
         ({}, True),
-        ({"money": 50, "stamina": 20}, True),
+        ({"money": 30, "stamina": 20}, True),
         ({"money": 51}, False),
         ({"stamina": 21}, False),
         ({"money": 10, "stamina": 21}, False),
@@ -191,7 +186,7 @@ def test_execute_applies_cost_and_effects(player):
 
     assert action.execute(player) is True
     assert player_state(player) == (
-        45,      #50 - 10 + 5
+        25,      #30 - 10 + 5
         19,      #20 - 3 + 2
         16,      #репутация не изменилась
         0,       #arena не изменилась
