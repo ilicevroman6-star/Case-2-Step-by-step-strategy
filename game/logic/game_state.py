@@ -195,7 +195,7 @@ def take_turn(players, current_index: int, round_state: dict):
         )
 
     # 7. ДОПИНГ-КОНТРОЛЬ
-    elif current_tile == "Допинг контроль":
+    elif current_tile == "Допинг":
         choice = yield (
             "await_choice",
             player,
@@ -216,7 +216,7 @@ def take_turn(players, current_index: int, round_state: dict):
                    f"{player.name}: тёмная проверка. -7 репутации.")
 
     # 8. ГРОМКИЙ ТРАНСФЕР
-    elif current_tile == "Громкий трансфер":
+    elif current_tile == "Трансфер":
         victim_idx, chosen_res = yield (
             "await_transfer",
             player,
