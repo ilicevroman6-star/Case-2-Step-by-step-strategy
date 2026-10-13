@@ -10,10 +10,10 @@ from game.ui.screens.base_screen import BaseScreen
 
 
 class GameBoardScreen(BaseScreen):
-    def __init__(self, app):
+    def __init__(self, app, first_player: int = 0):
         super().__init__(app)
         self.players = app.players
-        self.current_idx = 0
+        self.current_idx = first_player
         self.turn_generator = None
         self.current_modal = None
         self.goal_reached = False

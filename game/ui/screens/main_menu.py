@@ -19,8 +19,8 @@ class MainMenuScreen(BaseScreen):
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if self.new_btn.is_clicked(event.pos, True):
-                from game.ui.screens.game_board import GameBoardScreen
-                self.app.goto(GameBoardScreen)
+                from game.ui.screens.dice_roll import DiceRollScreen
+                self.app.goto(DiceRollScreen)
             elif self.rules_btn.is_clicked(event.pos, True):
                 from game.ui.screens.rules import RulesScreen
                 self.app.goto(RulesScreen)
