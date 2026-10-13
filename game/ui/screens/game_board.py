@@ -54,7 +54,7 @@ class GameBoardScreen(BaseScreen):
         self.last_dice = None
         self.last_player = None
         # Лог (короткая строка внизу)
-        self.log_rect = pygame.Rect(20, 690, 1240, 30)
+        self.log_rect = pygame.Rect(1280 - 300 - 16, 200, 300, 360)
         self.round_state = {"global_fired": False}
 
     # ---------------------------------------------------- EVENTS
@@ -115,7 +115,7 @@ class GameBoardScreen(BaseScreen):
 
         # Кончилась стамина — S16, пропуск хода
         if hasattr(active, "check_stamina_depletion") and active.check_stamina_depletion():
-            self._show_modal("S16 · Экстренные сборы",
+            self._show_modal(" Экстренные сборы",
                              f"{active.name} теряет стамину. Ход пропущен.",
                              [("Понятно · на сборы", "skip_turn", "danger")])
             return
@@ -123,7 +123,7 @@ class GameBoardScreen(BaseScreen):
         # Time Out — S13, пропуск хода
         if getattr(active, "skip_next_turn", False):
             active.skip_next_turn = False
-            self._show_modal("S13 · Time Out",
+            self._show_modal(" Time Out",
                              f"{active.name} пропускает раунд.",
                              [("Пропустить паузу", "skip_turn", "success")])
             return
@@ -150,22 +150,122 @@ class GameBoardScreen(BaseScreen):
         self._process_step(step_type, obj, msg)
 
     def _process_step(self, step_type, obj, msg):
-        """Единственное место, где решается, какую модалку показывать."""
-        self._push_log(msg)
+        # Вопросы НЕ пишем в лог — только финальные результаты
+        if not step_type.startswith("await_"):
+            self._push_log(msg)
 
         if step_type == "await_buy":
-            self._show_modal("S06 · Арена", msg,
+            self._show_modal(" Арена", msg,
                              [("Купить", {"buy": True}, "success"),
                               ("Отказаться", {"buy": False}, "danger")])
         elif step_type == "await_choice":
-            self._show_modal("S12 · Допинг-контроль", msg,
+            self._show_modal(" Допинг-контроль", msg,
                              [("Честная", {"doping_type": "fair"}, "active"),
                               ("Тёмная", {"doping_type": "dark"}, "danger")])
         elif step_type == "await_transfer":
-            opp = 1 - self.current_idx
-            self._show_modal("S14 · Громкий трансфер", msg,
-                             [("Монеты (10)", (opp, "money"), "active"),
-                              ("Стамина (6)", (opp, "stamina"), "active")])
+            # Находим всех соперников (кроме текущего)
+            opponents = [
+                (i, p) for i, p in enumerate(self.players)
+                if i != self.current_idx and not p.is_bankruptcy
+            ]
+            if not opponents:
+                self._show_modal(" Громкий трансфер",
+                                 "Нет доступных соперников.",
+                                 [("ОК", None, "active")])
+            else:
+                # Берём первого соперника для простоты
+                opp_idx, opp = opponents[0]
+                text = (
+                    f"{self.players[self.current_idx].name}, выбери, "
+                    f"что забрать у {opp.name}:\n\n"
+                    f"У {opp.name}: {opp.money} монет, "
+                    f"{opp.stamina} стамина(выносливость), "
+                    f"{opp.reputation} реп."
+                )
+                self._show_modal(
+                    "S14 · Громкий трансфер",
+                    text,
+                    [
+                        (f"Монеты (10)", (opp_idx, "money"), "active"),
+                        (f"Стамина (6)", (opp_idx, "stamina"), "active"),
+                        (f"Репутация (4)", (opp_idx, "reputation"), "active"),
+                        ("Отказаться", None, "danger"),
+                    ],
+                )
+
+        elif step_type == "await_buyout":
+            data = obj
+            owner = data["owner"]
+            rent = data["rent"]
+            buyout = data["buyout"]
+            text = (
+                f"Вы попали на арену {owner.name}.\n\n"
+                f"Рента: {rent} монет.\n"
+                f"Перекуп: {buyout} монет.\n\n"
+                f"Что выберете?"
+            )
+            self._show_modal(
+                "Перекуп арены",
+                text,
+                [
+                    ("Перекупить", {"buyout": True}, "success"),
+                    ("Заплатить ренту", {"buyout": False}, "danger"),
+                ],
+            )
+
+        elif step_type == "await_match":
+            data = obj
+            p = data["player"]
+            o = data["opponent"]
+            chance_p = data["chance_p"]
+            chance_o = 1 - chance_p
+            # Формируем текст с шансами
+            text = (
+                f"{p.name} vs {o.name}\n\n"
+                f"Выносливость {p.name}: {p.stamina}\n"
+                f"Выносливость {o.name}: {o.stamina}\n\n"
+                f"Шанс победы {p.name}: {int(chance_p * 100)}%\n"
+                f"Шанс победы {o.name}: {int(chance_o * 100)}%\n\n"
+                f"Победитель: +3 реп, +5 денег, -5 выносл.\n"
+                f"Проигравший: -7 выносл, -3 реп."
+            )
+            self._show_modal(
+                " Хоккейная дуэль",
+                text,
+                [("Начать матч", {"play": True}, "success"),
+                 ("Отказаться", {"play": False}, "danger")],
+            )
+
+        elif step_type == "await_training":
+            p = self.players[self.current_idx]
+            text = (
+                f"Клуб {p.name} на тренировке!\n\n"
+                f"Команда отработала технику и навыки.\n"
+                f"Выносливость: +4 \n\n"
+                f"Текущая выносливость: {p.stamina}"
+            )
+            self._show_modal(
+                "Тренировка",
+                text,
+                [("Отлично", None, "success")],
+            )
+
+        elif step_type == "await_timeout":
+            p = self.players[self.current_idx]
+            text = (
+                f"Клуб {p.name} взял паузу.\n\n"
+                f"Команда отдыхает текущий ход.\n"
+                f"Потерь нет.\n\n"
+                f"Выносливость: {p.stamina}\n"
+                f"Деньги: {p.money}\n"
+                f"Репутация: {p.reputation}"
+            )
+            self._show_modal(
+                " Time Out",
+                text,
+                [("ОК", None, "success")],
+            )
+
         elif step_type == "global_event":  # ← вернуть блок
             self._show_modal("S10 · Глобальное событие", msg,
                              [("Принять закон круга", None, "active")])  # action=None
@@ -224,14 +324,23 @@ class GameBoardScreen(BaseScreen):
 
     def _draw_log(self, screen):
         r = self.log_rect
+        # Фон
+        pygame.draw.rect(screen, COLORS["bg_panel"], r, border_radius=10)
+        pygame.draw.rect(screen, COLORS["border"], r, 2, border_radius=10)
+        # Заголовок
+        head = self.f_body.render("ЖУРНАЛ", True, COLORS["hover"])
+        screen.blit(head, (r.x + 12, r.y + 10))
+        # Разделитель
+        pygame.draw.line(screen, COLORS["border"],
+                         (r.x + 8, r.y + 36),
+                         (r.right - 8, r.y + 36), 1)
+        # Строки (снизу вверх, свежие сверху)
         n = len(self.log_lines)
-        for i, line in enumerate(self.log_lines):
-            # i=0 — самая старая строка; i=n-1 — самая свежая
-            # рисуем сверху вниз внутри log_rect
-            color = COLORS["text_main"] if i == n - 1 \
+        for i, line in enumerate(reversed(self.log_lines)):
+            color = COLORS["text_main"] if i == 0 \
                 else COLORS["text_secondary"]
-            t = self.f_body.render("• " + line[:110], True, color)
-            screen.blit(t, (r.x, r.y + i * 16))
+            t = self.f_body.render("• " + line[:40], True, color)
+            screen.blit(t, (r.x + 12, r.y + 46 + i * 22))
 
     def draw(self, screen):
         screen.fill(COLORS["bg_main"])

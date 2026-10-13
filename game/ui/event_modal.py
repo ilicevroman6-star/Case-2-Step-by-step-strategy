@@ -14,8 +14,8 @@ class EventModal:
         self.font = font
         self.screen_width, self.screen_height = screen_size
 
-        self.width = 520
-        self.height = 320
+        self.width = 800
+        self.height = 560
         self.rect = pygame.Rect(
             (self.screen_width - self.width) // 2,
             (self.screen_height - self.height) // 2,
@@ -71,20 +71,25 @@ class EventModal:
         surface.blit(title_surf, title_rect)
 
         # 4. Вывод текста с переносом строк
-        words = self.message.split(" ")
         lines = []
-        curr_line = ""
-        for word in words:
-            test_line = curr_line + word + " "
-            if self.font.size(test_line)[0] < self.width - 40:
-                curr_line = test_line
-            else:
-                lines.append(curr_line)
-                curr_line = word + " "
-        lines.append(curr_line)
+        for paragraph in self.message.split("\n"):
+            if not paragraph.strip():
+                lines.append("")
+                continue
+            words = paragraph.split(" ")
+            curr_line = ""
+            for word in words:
+                test_line = curr_line + word + " "
+                if self.font.size(test_line)[0] < self.width - 40:
+                    curr_line = test_line
+                else:
+                    lines.append(curr_line.rstrip())
+                    curr_line = word + " "
+            if curr_line:
+                lines.append(curr_line.rstrip())
 
         y_offset = self.rect.top + 80
-        for line in lines[:4]:
+        for line in lines[:10]:
             txt_surf = self.font.render(line.strip(), True, COLORS["text_main"])
             txt_rect = txt_surf.get_rect(
                 centerx=self.rect.centerx, top=y_offset

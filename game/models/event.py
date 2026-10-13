@@ -19,41 +19,49 @@ class RandomEvent:
         self.neg_text = neg_text
 
     def realize(self, player, positive: bool) -> str:
-        """
-        Универсальный метод реализации события.
-        Принимает объект игрока и флаг исхода (True/False).
-        Изменяет ресурсы игрока и возвращает строку лога.
-        """
-        # Проверка на случай, если рандом решил дать игроку
-        # позитивное/негативное событие, однако в словаре такой ключ вообще
-        # отсутствует и поэтому принудительно применяется
-        # противоположный эффект.
+        """Реализует событие и возвращает текст с эффектами."""
         if positive and self.pos_effects:
             effects = self.pos_effects
             log_text = self.pos_text
-        else:
+        elif not positive and self.neg_effects:
             effects = self.neg_effects
-            log_text = self.neg_text if self.neg_text else 'Ничего не произошло.'
+            log_text = self.neg_text if self.neg_text else 'Негативное событие.'
+        else:
+            if positive and self.neg_effects:
+                effects = self.neg_effects
+                log_text = self.neg_text
+            else:
+                effects = {}
+                log_text = f'{self.title}: без изменений.'
 
-        # 1. Особый случай для события B1 (лишение арены).
+        # Особый случай: B1
         if effects.get('action_type') == 'lose_random_arena':
             if getattr(player, 'owned_arenas', []):
-                lost_arena = random.choice(player.owned_arenas)
-                player.owned_arenas.remove(lost_arena)
-                return f'{log_text}\n📉 Банк изъял у вас Арену №{lost_arena}.'
+                lost = random.choice(player.owned_arenas)
+                player.owned_arenas.remove(lost)
+                return f'{log_text}\nАрена №{lost} изъята.'
             else:
                 player.money = max(0, player.money - 10)
-                return (
-                    '🏦 Вы задолжали банку. Так как у вас нет арен, '
-                    'банк списал штраф 10 монет.'
-                )
+                return f'{log_text}\nШтраф 10 монет (нет арен).'
 
-        # 2. Начисление стандартных бонусов и штрафов.
-        for resource, value in effects.items():
-            if resource == 'rent_multiplier':
+        # Начисление + сбор текста эффектов
+        effect_lines = []
+        for res, value in effects.items():
+            if res == 'rent_multiplier':
                 player.rent *= value
+                effect_lines.append(f'Рента ×{value}')
             else:
-                current_val = getattr(player, resource)
-                setattr(player, resource, current_val + value)
+                current = getattr(player, res, 0)
+                setattr(player, res, current + value)
+                sign = '+' if value > 0 else ''
+                name = {
+                    'money': 'Деньги',
+                    'stamina': 'Выносливость',
+                    'reputation': 'Репутация',
+                    'arena_price_modifier': 'Цена арен',
+                }.get(res, res)
+                effect_lines.append(f'{name}: {sign}{value}')
 
+        if effect_lines:
+            return log_text + '\n\n' + '\n'.join(effect_lines)
         return log_text

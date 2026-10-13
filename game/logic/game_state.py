@@ -15,18 +15,12 @@ def take_turn(players, current_index: int, round_state: dict):
     if player.is_bankruptcy:
         return
 
-
     # 1. ПЕРЕМЕЩЕНИЕ И КРУГ.
     dice = random.randint(1, 6)
-    player.last_dice = dice  # сохраняем бросок в игрока
+    player.last_dice = dice
     print(f"[ХОД] {player.name} выбросил кубик: {dice}")
-    # Считаем чистую новую позицию БЕЗ деления по кругу.
     new_position = player.arena + dice
-
-    # Проверяем, пересек ли игрок конец доски.
     passed_start = new_position >= len(BOARD)
-
-    # И только теперь сохраняем игроку его позицию с учетом круга.
     old_pos = player.arena
     player.arena = new_position % len(BOARD)
     print(f"[ХОД] {player.name}: позиция {old_pos} → {player.arena}")
@@ -36,46 +30,171 @@ def take_turn(players, current_index: int, round_state: dict):
             and not round_state.get("global_fired", False)):
         round_state["global_fired"] = True
         global_event = random.choice(GLOBAL_EVENTS)
+        text = global_event.realize(player, positive=random.random() < 0.5)
         yield (
             "global_event",
             global_event,
-            global_event.realize(player, positive=random.random() < 0.5),
+            f"Закон круга: {text}",
         )
 
     if passed_start:
-        # Начисляем бонусы за круг напрямую (репутация — не через Action)
         player.money += 20
         player.stamina += 5
         player.reputation += 3
 
     current_tile = BOARD[player.arena]
 
-    # 2. АВТОМАТИЧЕСКАЯ РЕНТА
+    # 2. АРЕНА — РЕНТА, ПЕРЕКУП, ПОКУПКА
     if current_tile == "Арена":
-        for owner in players:
-            if owner != player and player.arena in owner.owned_arenas:
-                final_rent = (
-                        ARENA_PRICES[player.arena]["rent_price"] * player.rent
-                )
-                print(f"[РЕНТА] {player.name} платит {final_rent} монет игроку {owner.name}")
-                Action(cost={"money": final_rent}).execute(player)
-                Action(effects={"money": final_rent}).execute(owner)
+        owner = None
+        for p in players:
+            if p != player and player.arena in p.owned_arenas:
+                owner = p
                 break
 
-    # 3. ЛОКАЛЬНЫЕ СОБЫТИЯ И ИНТЕРАКТИВНЫЕ КЛЕТКИ
-    if current_tile == "Random":
+        if owner is not None:
+            # Чужая — перекуп или рента
+            base_price = DEFAULT_BUY_PRICE + getattr(player, "arena_price_modifier", 0)
+            buyout_price = base_price * 2
+            rent_price = ARENA_PRICES[player.arena]["rent_price"] * player.rent
+            choice = yield (
+                "await_buyout",
+                {
+                    "owner": owner,
+                    "rent": rent_price,
+                    "buyout": buyout_price,
+                    "arena_idx": player.arena,
+                },
+                f"Арена {owner.name}. Рента {rent_price} или перекуп {buyout_price}?",
+            )
+            if choice and choice.get("buyout"):
+                if Action(cost={"money": buyout_price}).execute(player):
+                    owner.owned_arenas.remove(player.arena)
+                    player.owned_arenas.append(player.arena)
+                    yield ("log", None,
+                           f"{player.name} перекупил арену у {owner.name}!")
+                else:
+                    yield ("log", None,
+                           f"{player.name} не хватает. Платит ренту.")
+                    Action(cost={"money": rent_price}).execute(player)
+                    Action(effects={"money": rent_price}).execute(owner)
+            else:
+                Action(cost={"money": rent_price}).execute(player)
+                Action(effects={"money": rent_price}).execute(owner)
+                yield ("log", None,
+                       f"{player.name} заплатил ренту {rent_price} игроку {owner.name}.")
+
+        elif player.arena in player.owned_arenas:
+            # Своя — ничего
+            yield ("log", None,
+                   f"{player.name}: своя арена, ничего не происходит.")
+
+        else:
+            # Свободная — покупка
+            price = max(0, DEFAULT_BUY_PRICE +
+                        getattr(player, "arena_price_modifier", 0))
+            buy = yield "await_buy", player, f"Купить Арену за {price} монет?"
+            if buy and buy.get("buy"):
+                buy_action = Action(
+                    cost={"money": price},
+                    effects={"add_arena": player.arena},
+                )
+                if buy_action.execute(player):
+                    yield ("log", None,
+                           f"{player.name} купил Арену за {price} монет.")
+                else:
+                    yield ("log", None,
+                           f"{player.name} не смог купить Арену.")
+            else:
+                yield ("log", None,
+                       f"{player.name} отказался от покупки Арены.")
+
+    # 3. RANDOM
+    elif current_tile == "Random":
         pool = RANDOM_POSITIVE if random.random() < 0.5 else RANDOM_NEGATIVE
         is_positive = pool is RANDOM_POSITIVE
-        yield "log", None, random.choice(pool).realize(player, positive=is_positive)
+        event = random.choice(pool)
+        text = event.realize(player, positive=is_positive)
+        yield "log", None, f"{player.name}: {text}"
 
+    # 4. МЕДИА
     elif current_tile == "Медиа":
         pool = MEDIA_POSITIVE if random.random() < 0.5 else MEDIA_NEGATIVE
         is_positive = pool is MEDIA_POSITIVE
-        yield "log", None, random.choice(pool).realize(player, positive=is_positive)
+        event = random.choice(pool)
+        text = event.realize(player, positive=is_positive)
+        yield "log", None, f"{player.name}: {text}"
 
+
+    # 5. МАТЧ — побеждает сильный
+    elif current_tile == "Матч":
+        opponents = [p for p in players
+                     if p != player and not p.is_bankruptcy]
+        if not opponents:
+            yield ("log", None, "Нет соперников для матча.")
+        else:
+            opponent = random.choice(opponents)
+            total = player.stamina + opponent.stamina
+            chance_p = player.stamina / total if total > 0 else 0.5
+            choice = yield (
+                "await_match",
+                {
+                    "player": player,
+                    "opponent": opponent,
+                    "chance_p": chance_p,
+                },
+                f"Хоккейная дуэль: {player.name} vs {opponent.name}",
+            )
+            if choice and choice.get("play"):
+                # Побеждает сильный; при равенстве — рандом
+                player_wins = (
+                    player.stamina > opponent.stamina
+                    or (player.stamina == opponent.stamina
+                        and random.random() < 0.5)
+                )
+                if player_wins:
+                    player.reputation += 3
+                    player.money += 5
+                    player.stamina -= 5
+                    opponent.stamina -= 7
+                    opponent.reputation -= 3
+                    yield ("log", None,
+                           f"ПОБЕДА: {player.name} обыграл {opponent.name}! "
+                           f"{player.name}: +3 реп, +5 денег, -5 выносл. "
+                           f"{opponent.name}: -7 выносл, -3 реп.")
+                else:
+                    opponent.reputation += 3
+                    opponent.money += 5
+                    opponent.stamina -= 5
+                    player.stamina -= 7
+                    player.reputation -= 3
+                    yield ("log", None,
+                           f"ПОРАЖЕНИЕ: {opponent.name} обыграл {player.name}. "
+                           f"{opponent.name}: +3 реп, +5 денег, -5 выносл. "
+                           f"{player.name}: -7 выносл, -3 реп.")
+                for p in (player, opponent):
+                    if p.stamina <= 0:
+                        p.stamina = 0
+                        setattr(p, "skip_next_turn", True)
+
+    # 6. ТРЕНИРОВКА
     elif current_tile == "Тренировка":
         Action(effects={"stamina": 4}).execute(player)
+        yield (
+            "await_training",
+            None,
+            f"{player.name} на тренировке! +4 выносливости.",
+        )
 
+    # 6.5. TIME OUT
+    elif current_tile == "Time out":
+        yield (
+            "await_timeout",
+            None,
+            f"{player.name} отдыхает. Ход пропущен без потерь.",
+        )
+
+    # 7. ДОПИНГ-КОНТРОЛЬ
     elif current_tile == "Допинг контроль":
         choice = yield (
             "await_choice",
@@ -83,17 +202,21 @@ def take_turn(players, current_index: int, round_state: dict):
             "1. Честная (-5 монет, пропуск хода) 2. Темная (-7 репутации)",
         )
         if choice.get("doping_type") == "fair":
-            # Пытаемся списать деньги за честную проверку.
             if Action(cost={"money": 5}).execute(player):
                 setattr(player, "skip_next_turn", True)
+                yield ("log", None,
+                       f"{player.name}: честная проверка. -5 монет, пропуск хода.")
             else:
-                # Если денег нет, принудительно отправляем на темную проверку
                 player.reputation -= 7
+                yield ("log", None,
+                       f"{player.name}: не хватило на честную. -7 репутации.")
         else:
             player.reputation -= 7
+            yield ("log", None,
+                   f"{player.name}: тёмная проверка. -7 репутации.")
 
+    # 8. ГРОМКИЙ ТРАНСФЕР
     elif current_tile == "Громкий трансфер":
-        # Изъятие ресурсов теперь возвращает готовое действие Action!
         victim_idx, chosen_res = yield (
             "await_transfer",
             player,
@@ -101,74 +224,20 @@ def take_turn(players, current_index: int, round_state: dict):
         )
         victim = players[victim_idx]
 
-        # СЦЕНАРИЙ 1: Кража репутации (В обход класса Action, напрямую)
         if chosen_res == "reputation":
-            # Вычисляем, сколько реально можно забрать
-            # (максимум 4, но не больше, чем есть у жертвы)
             amount = min(4, max(0, victim.reputation))
             victim.reputation -= amount
             player.reputation += amount
-
-        # СЦЕНАРИЙ 2: Кража обычных ресурсов (Используем безопасный Action)
+            yield ("log", None,
+                   f"{player.name} отнял {amount} репутации у {victim.name}.")
         elif chosen_res in ["money", "stamina"]:
             steal_amount = 10 if chosen_res == "money" else 6
             stolen_action = Action(cost={chosen_res: steal_amount})
-
             if stolen_action.execute(victim):
                 Action(effects={chosen_res: steal_amount}).execute(player)
-
-
-
-    elif current_tile == "Арена":
-
-        # Проверяем, чья это арена
-
-        owner = None
-
-        for p in players:
-
-            if player.arena in getattr(p, "owned_arenas", []):
-                owner = p
-
-                break
-
-        if owner is not None and owner != player:
-
-            # Чужая арена — рента уже списана выше
-
-            pass
-
-        elif owner == player:
-
-            # Своя арена — ничего
-
-            yield ("log", None,
-
-                   f"{player.name}: своя арена, ничего не происходит.")
-
-        else:
-
-            # Свободная арена — предлагаем купить
-
-            price = max(0, DEFAULT_BUY_PRICE +
-
-                        getattr(player, "arena_price_modifier", 0))
-
-            buy = yield "await_buy", player, f"Купить Арену за {price} монет?"
-
-            if buy and buy.get("buy"):
-
-                buy_action = Action(
-
-                    cost={"money": price},
-
-                    effects={"add_arena": player.arena},
-
-                )
-
-                if not buy_action.execute(player):
-                    yield ("log", None,
-
-                           f"{player.name} не смог купить Арену: "
-
-                           "не хватает монет!")
+                name = "монет" if chosen_res == "money" else "выносливости"
+                yield ("log", None,
+                       f"{player.name} отнял {steal_amount} {name} у {victim.name}.")
+            else:
+                yield ("log", None,
+                       f"{player.name} не смог отнять у {victim.name}.")
